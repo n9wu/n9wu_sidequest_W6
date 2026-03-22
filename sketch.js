@@ -134,6 +134,10 @@ let level1 = [
 function makeLevel2() {
   return [
     "".padEnd(39, " "),
+    "".padEnd(39, " "),
+    "".padEnd(39, " "),
+    "".padEnd(39, " "),
+    "".padEnd(39, " "),
     "        f      x         x".padEnd(39, " "),
     "       LggR   LgR       LR".padEnd(39, " "),
     "       x                   f".padEnd(39, " "),
@@ -141,12 +145,33 @@ function makeLevel2() {
     "     LgggR      f    x   LggggR ".padEnd(39, " "),
     "ggggggggggggggggggggggggggggggggggggggg",
     "ddddddddddddddddddddddddddddddddddddddd",
+    "ddddddddddddddddddddddddddddddddddddddd",
   ];
 }
 
 let level2 = makeLevel2();
 
-let levels = [level1, level2];
+function makeLevel3() {
+  return [
+    "".padEnd(39, " "),
+    "                f     x        f       ".padEnd(39, " "),
+    "              LgggR  LgR      LgR      ".padEnd(39, " "),
+    "    x                        x         ".padEnd(39, " "),
+    "  LgggR                 f   LgR        ".padEnd(39, " "),
+    "          b   x        LgR        b    ".padEnd(39, " "),
+    "         LgggggR                 LggR  ".padEnd(39, " "),
+    "".padEnd(39, " "),
+    "".padEnd(39, " "),
+    "                               x       ".padEnd(39, " "),
+    "   b   f               b     LgggR     ".padEnd(39, " "),
+    "LgggggggR            LgggR             ".padEnd(39, " "),
+    "ddddddddddddddddddddddddddddddddddddddd".padEnd(39, "d"),
+  ];
+}
+
+let level3 = makeLevel3();
+
+let levels = [level1, level2, level3];
 let currentLevel = 0;
 let level = levels[currentLevel];
 
@@ -229,6 +254,11 @@ const FONT_CHARS =
 // gravity
 const GRAVITY = 10;
 
+// debug features
+let showDebugScreen = false;
+let moonGravity = false;
+let debugSprites = false;
+
 // initialize metrics for starting level
 updateLevelMetrics();
 console.log(
@@ -254,14 +284,18 @@ function handleLevelChange() {
   if (fire) fire.removeAll();
 
   if (boar) {
-    for (const e of boar) {
-      if (e.footProbe) e.footProbe.remove();
-      if (e.frontProbe) e.frontProbe.remove();
-      if (e.groundProbe) e.groundProbe.remove();
+    for (let i = boar.length - 1; i >= 0; i--) {
+      const e = boar[i];
+      e.footProbe?.remove();
+      e.frontProbe?.remove();
+      e.groundProbe?.remove();
       e.remove();
     }
     boar.removeAll();
   }
+
+  if (player) player.remove();
+  if (sensor) sensor.remove();
 
   currentLevel++;
   level = levels[currentLevel];
@@ -308,10 +342,14 @@ function handleLevelChange() {
   player.y = PLAYER_START_Y;
   player.vel.x = 0;
   player.vel.y = 0;
+  player.rotation = 0;
+  player.rotationSpeed = 0;
   sensor.x = player.x;
   sensor.y = player.y + player.h / 2;
   sensor.vel.x = 0;
   sensor.vel.y = 0;
+  sensor.rotation = 0;
+  sensor.rotationSpeed = 0;
   player.ani = "idle";
   player.tint = "#ffffff";
 
@@ -402,6 +440,25 @@ function draw() {
   // handle any deferred world rebuilds before anything else
   if (levelChangeScheduled) handleLevelChange();
 
+  // --- DEBUG TOGGLES ---
+  if (kb.presses("q")) showDebugScreen = !showDebugScreen;
+
+  if (showDebugScreen) {
+    if (kb.presses("g")) {
+      moonGravity = !moonGravity;
+      world.gravity.y = moonGravity ? GRAVITY * 0.2 : GRAVITY;
+    }
+    if (kb.presses("h")) {
+      debugSprites = !debugSprites;
+      allSprites.debug = debugSprites;
+      for (const e of boar) {
+        if (e.footProbe) e.footProbe.visible = debugSprites;
+        if (e.frontProbe) e.frontProbe.visible = debugSprites;
+        if (e.groundProbe) e.groundProbe.visible = debugSprites;
+      }
+    }
+  }
+
   background(69, 61, 79);
 
   // 1) decide boar vel/turns using probes
@@ -414,12 +471,13 @@ function draw() {
   camera.width = VIEWW;
   camera.height = VIEWH;
 
-  let targetX = constrain(player.x, VIEWW / 2, LEVELW - VIEWW / 2 - TILE_W / 2);
-  let targetY = constrain(
-    player.y,
-    VIEWH / 2 - TILE_H * 2,
-    LEVELH - VIEWH / 2 - TILE_H,
-  );
+  let minX = VIEWW / 2;
+  let maxX = Math.max(minX, LEVELW - VIEWW / 2 - TILE_W / 2);
+  let minY = VIEWH / 2 - TILE_H * 2;
+  let maxY = Math.max(minY, LEVELH - VIEWH / 2 - TILE_H);
+
+  let targetX = constrain(player.x, minX, maxX);
+  let targetY = constrain(player.y, minY, maxY);
 
   camera.x = Math.round(lerp(camera.x || targetX, targetX, 0.1));
   camera.y = Math.round(lerp(camera.y || targetY, targetY, 0.1));
@@ -621,6 +679,9 @@ function draw() {
 
   // accept R to restart the game if player wins or dies
   if ((dead || won) && kb.presses("r")) restartGame();
+
+  // draw debug screen on top of everything
+  drawDebugScreen();
 }
 
 function applyIntegerScale() {
@@ -712,7 +773,8 @@ function rescueLeaf(player, leaf) {
   if (!leaf.active) return;
   leaf.active = false;
   leaf.visible = false;
-  leaf.removeColliders();
+  leaf.x = -9999;
+  leaf.y = -9999;
   score++;
   if (sndCollect) sndCollect.play();
 
@@ -779,7 +841,8 @@ function tryHitBoar() {
   const facingDir = player.mirror.x ? -1 : 1;
   const playerFeetY = player.y + player.h / 2;
 
-  for (const e of boar) {
+  for (let i = boar.length - 1; i >= 0; i--) {
+    const e = boar[i];
     if (e.dead || e.dying) continue;
 
     const dx = e.x - player.x;
@@ -933,6 +996,37 @@ function drawDeathOverlay() {
   camera.on();
 }
 
+function drawDebugScreen() {
+  if (!showDebugScreen) return;
+  camera.off();
+  drawingContext.imageSmoothingEnabled = false;
+
+  push();
+  noStroke();
+  fill(0, 180);
+  rect(10, 20, 260, 65);
+  pop();
+
+  drawOutlinedTextToGfx(window, "DEBUG MENU", 15, 25, "#00ff00");
+  drawOutlinedTextToGfx(window, "[Q] HIDE DEBUG MENU", 15, 40, "#ffffff");
+  drawOutlinedTextToGfx(
+    window,
+    "[G] MOON GRAVITY: " + (moonGravity ? "ON" : "OFF"),
+    15,
+    55,
+    "#ffffff",
+  );
+  drawOutlinedTextToGfx(
+    window,
+    "[H] HITBOXES: " + (debugSprites ? "ON" : "OFF"),
+    15,
+    70,
+    "#ffffff",
+  );
+
+  camera.on();
+}
+
 function placeProbe(probe, x, y) {
   probe.x = x;
   probe.y = y;
@@ -958,9 +1052,9 @@ function attachBoarProbes(e) {
   e.groundProbe.sensor = true;
 
   // keep them on/off consistently
-  e.footProbe.visible = false;
-  e.frontProbe.visible = false;
-  e.groundProbe.visible = false;
+  e.footProbe.visible = debugSprites;
+  e.frontProbe.visible = debugSprites;
+  e.groundProbe.visible = debugSprites;
 
   // make sure probes always render on top of tiles
   e.footProbe.layer = 999;
@@ -1023,11 +1117,12 @@ function boarGrounded(e) {
 function updateBoars() {
   // freeze boars if player wins
   if (won) {
-    for (const e of boar) e.vel.x = 0;
+    for (let i = boar.length - 1; i >= 0; i--) boar[i].vel.x = 0;
     return;
   }
 
-  for (const e of boar) {
+  for (let i = boar.length - 1; i >= 0; i--) {
+    const e = boar[i];
     updateBoarProbes(e);
     updateGroundProbe(e);
 
@@ -1201,6 +1296,8 @@ function restartGame() {
   sensor.y = player.y + player.h / 2;
   sensor.vel.x = 0;
   sensor.vel.y = 0;
+  sensor.rotation = 0;
+  sensor.rotationSpeed = 0;
 
   player.ani = "idle";
   player.tint = "#ffffff";
@@ -1215,11 +1312,11 @@ function restartGame() {
     s.y = item.y;
     s.active = true;
     s.visible = true;
-    s.removeColliders(); // keep overlap-only
   }
 
   // respawn boars (simple rebuild)
-  for (const e of boar) {
+  for (let i = boar.length - 1; i >= 0; i--) {
+    const e = boar[i];
     e.footProbe?.remove();
     e.frontProbe?.remove();
     e.groundProbe?.remove();
@@ -1292,7 +1389,7 @@ function restartGame() {
 }
 
 function makeWorld() {
-  world.gravity.y = GRAVITY;
+  world.gravity.y = moonGravity ? GRAVITY * 0.2 : GRAVITY;
 
   // --- ENEMIES (boar spawned from 'b') ---
   boar = new Group();

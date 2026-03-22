@@ -19,6 +19,16 @@ or defeating enemies. Sound effects and background music enhance the feedback.
 - **Attack**: Space bar (hit enemies in front of you)
 - **Restart**: R (when dead)
 
+## Debug Mode
+
+The game includes a built-in debug screen to help with testing mechanics and physics.
+
+**Controls:**
+
+- **Q** - Toggle the Debug Menu on and off.
+- **G** - Toggle Moon Gravity (Reduces gravity to 20% for floating jumps).
+- **H** - Toggle Hitboxes (Displays `p5.play` physics colliders and enemy AI detection probes).
+
 Leaves scattered in the level are collectibles; gathering enough triggers a
 level transition. The first map contains exactly 15 mushrooms and has been
 scaled back slightly with only a couple of boars and a pair of fire tiles so
